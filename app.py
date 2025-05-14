@@ -13,7 +13,7 @@ import requests
 from urllib.parse import urlparse
 from io import BytesIO
 
-API_KEY = "3fa9c00246f75d9fe820bdc665116490ca88504f2fe11c350c3af9f65bc4e20b"  # Replace with your actual key
+API_KEY = "5bc99bca133b14ab4ed211d9ed78258ac1f86b6e9833840416c973bfa57f31a5"  # Replace with your actual key
 TARGET_DOMAIN = "kollegeapply.com"
 
 COMPETITORS = {
