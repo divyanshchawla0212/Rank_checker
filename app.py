@@ -1,10 +1,12 @@
+# -*- coding: utf-8 -*-
 import streamlit as st
 import pandas as pd
 import requests
+import time
 from urllib.parse import urlparse
 from io import BytesIO
 
-API_KEY = "fe868a7ca31b5a0bb00eb9e1e80bc2f15ff8beef2184fdb255ff1597eeaed68d"  # Replace with your actual key
+API_KEY = "fe868a7ca31b5a0bb00eb9e1e80bc2f15ff8beef2184fdb255ff1597eeaed68d"
 TARGET_DOMAIN = "kollegeapply.com"
 
 COMPETITORS = {
@@ -59,31 +61,37 @@ def process_keywords(df_kw):
             "device": "desktop"
         }
 
-        resp = requests.get("https://serpapi.com/search", params=params)
-        resp.raise_for_status()
-        data = resp.json()
-        organic = data.get("organic_results", [])
-        filtered = [r for r in organic if not is_official_site(r.get("link", ""))]
+        try:
+            resp = requests.get("https://serpapi.com/search", params=params)
+            resp.raise_for_status()
+            data = resp.json()
+            organic = data.get("organic_results", [])
+            filtered = [r for r in organic if not is_official_site(r.get("link", ""))]
 
-        row = {"keyword": kw}
-        kr, ku = get_ranking(filtered, TARGET_DOMAIN)
-        row["kollegeapply_rank"] = kr
-        row["kollegeapply_url"] = ku
+            row = {"keyword": kw}
+            kr, ku = get_ranking(filtered, TARGET_DOMAIN)
+            row["kollegeapply_rank"] = kr
+            row["kollegeapply_url"] = ku
 
-        for i in range(1, 4):
-            if len(filtered) >= i:
-                row[f"rank_{i}_name"] = filtered[i-1].get("title", "")
-                row[f"rank_{i}_url"] = filtered[i-1].get("link", "")
-            else:
-                row[f"rank_{i}_name"] = ""
-                row[f"rank_{i}_url"] = ""
+            for i in range(1, 4):
+                if len(filtered) >= i:
+                    row[f"rank_{i}_name"] = filtered[i-1].get("title", "")
+                    row[f"rank_{i}_url"] = filtered[i-1].get("link", "")
+                else:
+                    row[f"rank_{i}_name"] = ""
+                    row[f"rank_{i}_url"] = ""
 
-        for name, dom in COMPETITORS.items():
-            rnk, url = get_ranking(filtered, dom)
-            row[f"{name}_rank"] = rnk
-            row[f"{name}_url"] = url
+            for name, dom in COMPETITORS.items():
+                rnk, url = get_ranking(filtered, dom)
+                row[f"{name}_rank"] = rnk
+                row[f"{name}_url"] = url
 
-        results.append(row)
+            results.append(row)
+
+        except requests.exceptions.RequestException as e:
+            st.error(f"❌ Error processing keyword '{kw}': {e}")
+        
+        time.sleep(2)  # Delay to avoid hitting SerpAPI rate limits
 
     return pd.DataFrame(results)
 
@@ -93,18 +101,21 @@ st.title("📈 Google Keyword Rank Checker")
 uploaded_file = st.file_uploader("Upload Keyword Excel File", type=["xlsx"])
 
 if uploaded_file is not None:
-    df_kw = pd.read_excel(uploaded_file, usecols=["KW"])
-    st.success("✅ File uploaded. Starting processing...")
+    try:
+        df_kw = pd.read_excel(uploaded_file, usecols=["KW"])
+        st.success("✅ File uploaded. Starting processing...")
 
-    with st.spinner("Fetching data from Google..."):
-        df_results = process_keywords(df_kw)
+        with st.spinner("🔄 Fetching data from Google..."):
+            df_results = process_keywords(df_kw)
 
-    st.subheader("🔍 Preview of Results")
-    st.dataframe(df_results.head(10))
+        st.subheader("🔍 Preview of Results")
+        st.dataframe(df_results.head(10))
 
-    # Download
-    towrite = BytesIO()
-    df_results.to_excel(towrite, index=False, engine='openpyxl')
-    towrite.seek(0)
-    st.download_button("📥 Download Excel", towrite, "keyword_ranks.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-
+        # Download
+        towrite = BytesIO()
+        df_results.to_excel(towrite, index=False, engine='openpyxl')
+        towrite.seek(0)
+        st.download_button("📥 Download Excel", towrite, "keyword_ranks.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    
+    except Exception as e:
+        st.error(f"⚠️ Error reading file: {e}")
