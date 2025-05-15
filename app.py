@@ -3,6 +3,7 @@ import streamlit as st
 import pandas as pd
 import requests
 import time
+import random
 from urllib.parse import urlparse
 from io import BytesIO
 
@@ -44,6 +45,24 @@ def get_ranking(organic_results, target_domain):
             return idx, link
     return "Not in Top 100", ""
 
+# --- Safe SerpAPI Request with Retry Logic ---
+def safe_serpapi_request(params, max_retries=5):
+    for i in range(max_retries):
+        try:
+            resp = requests.get("https://serpapi.com/search", params=params)
+            if resp.status_code == 429:
+                wait_time = (5 + i * 2) + random.randint(0, 3)
+                st.warning(f"⚠️ Rate limit hit. Retrying in {wait_time}s (attempt {i+1}/{max_retries})...")
+                time.sleep(wait_time)
+                continue
+            resp.raise_for_status()
+            return resp.json()
+        except requests.exceptions.RequestException as e:
+            st.error(f"Error contacting SerpAPI: {e}")
+            time.sleep(5)
+    raise Exception("SerpAPI failed after multiple retries.")
+
+# --- Keyword Processing ---
 def process_keywords(df_kw):
     results = []
 
@@ -62,9 +81,7 @@ def process_keywords(df_kw):
         }
 
         try:
-            resp = requests.get("https://serpapi.com/search", params=params)
-            resp.raise_for_status()
-            data = resp.json()
+            data = safe_serpapi_request(params)
             organic = data.get("organic_results", [])
             filtered = [r for r in organic if not is_official_site(r.get("link", ""))]
 
@@ -88,10 +105,10 @@ def process_keywords(df_kw):
 
             results.append(row)
 
-        except requests.exceptions.RequestException as e:
+        except Exception as e:
             st.error(f"❌ Error processing keyword '{kw}': {e}")
         
-        time.sleep(5)  # Delay to avoid hitting SerpAPI rate limits
+        time.sleep(1)  # small base delay between keywords
 
     return pd.DataFrame(results)
 
