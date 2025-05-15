@@ -91,7 +91,7 @@ def process_keywords(df_kw):
         except requests.exceptions.RequestException as e:
             st.error(f"❌ Error processing keyword '{kw}': {e}")
         
-        time.sleep(2)  # Delay to avoid hitting SerpAPI rate limits
+        time.sleep(5)  # Delay to avoid hitting SerpAPI rate limits
 
     return pd.DataFrame(results)
 
