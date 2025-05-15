@@ -16,8 +16,7 @@ COMPETITORS = {
 }
 
 OFFICIAL_PATTERNS = [
-    ".gov.", ".edu.", ".ac.",
-    "wikipedia.org", "wikimedia.org", "britannica.com", ".int", ".un.org", ".europa.eu", "ugcnetonline"
+    "wikipedia.org", "wikimedia.org", "britannica.com", ".europa.eu"
 ]
 
 AMBIGUOUS_QUERIES = {
