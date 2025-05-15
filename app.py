@@ -7,7 +7,7 @@ import random
 from urllib.parse import urlparse
 from io import BytesIO
 
-API_KEY = "65c1ef626095da5bfbea9f505678f32c6baeda56f183f05453e6c676514ed4fe1"
+API_KEY = "5c1ef626095da5bfbea9f505678f32c6baeda56f183f05453e6c676514ed4fe1"
 TARGET_DOMAIN = "kollegeapply.com"
 
 COMPETITORS = {
