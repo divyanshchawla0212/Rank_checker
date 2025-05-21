@@ -6,7 +6,7 @@ import time
 from urllib.parse import urlparse
 from io import BytesIO
 
-API_KEY = "00eb314fa92cff993578fed39b4efc6e96b9d617f201e2d70c0f9a161b64550e"
+API_KEY = "99ecb6787f81d593d52c5022c099144087de6c84e4cbf9c071118e9af0810da2"
 TARGET_DOMAIN = "kollegeapply.com"
 
 COMPETITORS = {
