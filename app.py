@@ -1,15 +1,18 @@
-# app.py
 import streamlit as st
 import pandas as pd
 import requests
 import time
 from urllib.parse import urlparse
-from io import BytesIO
 from datetime import datetime
+from io import BytesIO
+import gspread
+from google.oauth2.service_account import Credentials
+from gspread_dataframe import set_with_dataframe
 
-# Configuration
-API_KEY = "99ecb6787f81d593d52c5022c099144087de6c84e4cbf9c071118e9af0810da2"
+# --- CONFIG ---
+API_KEY = "your_serpapi_key_here"
 TARGET_DOMAIN = "kollegeapply.com"
+SPREADSHEET_ID = "1tzdEOUYqFRZAizMkKHFyYzoYHv4t_XOt_RauNlMt9QE"
 
 COMPETITORS = {
     "shiksha": "shiksha.com",
@@ -17,17 +20,11 @@ COMPETITORS = {
     "collegedekho": "collegedekho.com"
 }
 
-OFFICIAL_PATTERNS = [
-    "wikipedia.org", "wikimedia.org", "britannica.com", ".europa.eu"
-]
+OFFICIAL_PATTERNS = ["wikipedia.org", "wikimedia.org", "britannica.com", ".europa.eu"]
 
-AMBIGUOUS_QUERIES = {
-    "cat": "CAT exam",
-    "gmat": "GMAT exam",
-    "gre": "GRE exam"
-}
+AMBIGUOUS_QUERIES = {"cat": "CAT exam", "gmat": "GMAT exam", "gre": "GRE exam"}
 
-# Helper Functions
+
 def is_official_site(url):
     return any(p in url.lower() for p in OFFICIAL_PATTERNS)
 
@@ -92,7 +89,6 @@ def process_keywords(df_kw):
                 row[f"{name}_rank"] = rnk
                 row[f"{name}_url"] = url
 
-            # PAA logic
             paa_results = data.get("related_questions", [])
             row["paa_exists"] = "Yes" if paa_results else "No"
             row["paa_kollegeapply"] = "No"
@@ -104,38 +100,47 @@ def process_keywords(df_kw):
 
             results.append(row)
 
-        except requests.exceptions.RequestException as e:
-            st.error(f"❌ Error processing keyword '{kw}': {e}")
+        except Exception as e:
+            st.error(f"❌ Error for keyword '{kw}': {e}")
         time.sleep(2)
 
     return pd.DataFrame(results)
 
 
-# --- Streamlit UI ---
-st.set_page_config(page_title="Keyword Rank Checker", layout="wide")
-st.title("🔍 Keyword SERP Rank Checker with PAA Detection")
+# --- UI ---
+st.set_page_config(page_title="SERP Rank + PAA Tracker", layout="wide")
+st.title("🔍 Keyword Rank Tracker + PAA Checker")
 
-uploaded_file = st.file_uploader("📤 Upload Excel file with 'KW' column", type=["xlsx"])
+uploaded_file = st.file_uploader("Upload Excel with 'KW' column", type=["xlsx"])
 
 if uploaded_file:
     try:
         df_kw = pd.read_excel(uploaded_file, usecols=["KW"])
-        st.success("✅ File uploaded successfully. Starting analysis...")
+        st.success("✅ File uploaded successfully")
 
-        with st.spinner("Fetching SERP data from Google via SerpAPI..."):
-            df_results = process_keywords(df_kw)
+        with st.spinner("Processing..."):
+            df_result = process_keywords(df_kw)
 
-        st.subheader("📊 SERP Result Preview")
-        st.dataframe(df_results.head(10))
+            # Authenticate with Google Sheets
+            creds = Credentials.from_service_account_file(
+                "service_account.json",
+                scopes=["https://www.googleapis.com/auth/spreadsheets"]
+            )
+            gc = gspread.authorize(creds)
+            sh = gc.open_by_key(SPREADSHEET_ID)
 
-        # Download
+            sheet_name = datetime.now().strftime("Rank_%Y%m%d_%H%M")
+            worksheet = sh.add_worksheet(title=sheet_name, rows="100", cols="30")
+            set_with_dataframe(worksheet, df_result)
+
+        st.success(f"✅ Data written to Google Sheet tab: {sheet_name}")
+        st.dataframe(df_result.head(10))
+
+        # Optional: download Excel
         towrite = BytesIO()
-        df_results.to_excel(towrite, index=False, engine='openpyxl')
+        df_result.to_excel(towrite, index=False, engine='openpyxl')
         towrite.seek(0)
-
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M")
-        filename = f"keyword_rank_output_{timestamp}.xlsx"
-        st.download_button("📥 Download Excel File", towrite, filename, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        st.download_button("📥 Download Excel", towrite, "keyword_rank_output.xlsx")
 
     except Exception as e:
-        st.error(f"⚠️ Failed to read file: {e}")
+        st.error(f"⚠️ {e}")
