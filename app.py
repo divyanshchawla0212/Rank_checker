@@ -1,11 +1,13 @@
-# -*- coding: utf-8 -*-
+# app.py
 import streamlit as st
 import pandas as pd
 import requests
 import time
 from urllib.parse import urlparse
 from io import BytesIO
+from datetime import datetime
 
+# Configuration
 API_KEY = "99ecb6787f81d593d52c5022c099144087de6c84e4cbf9c071118e9af0810da2"
 TARGET_DOMAIN = "kollegeapply.com"
 
@@ -22,18 +24,24 @@ OFFICIAL_PATTERNS = [
 AMBIGUOUS_QUERIES = {
     "cat": "CAT exam",
     "gmat": "GMAT exam",
-    "gre": "GRE exam",
+    "gre": "GRE exam"
 }
 
+# Helper Functions
 def is_official_site(url):
-    u = url.lower()
-    return any(p in u for p in OFFICIAL_PATTERNS)
+    return any(p in url.lower() for p in OFFICIAL_PATTERNS)
 
 def extract_domain(url):
     try:
         return urlparse(url).netloc.lower().replace("www.", "")
     except:
         return ""
+
+def domain_in_url(url, domain):
+    try:
+        return domain in urlparse(url).netloc.lower()
+    except:
+        return False
 
 def get_ranking(organic_results, target_domain):
     for idx, r in enumerate(organic_results, start=1):
@@ -45,10 +53,8 @@ def get_ranking(organic_results, target_domain):
 
 def process_keywords(df_kw):
     results = []
-
     for kw in df_kw["KW"]:
         query = AMBIGUOUS_QUERIES.get(kw.strip().lower(), kw)
-
         params = {
             "engine": "google",
             "q": query,
@@ -64,6 +70,7 @@ def process_keywords(df_kw):
             resp = requests.get("https://serpapi.com/search", params=params)
             resp.raise_for_status()
             data = resp.json()
+
             organic = data.get("organic_results", [])
             filtered = [r for r in organic if not is_official_site(r.get("link", ""))]
 
@@ -74,8 +81,8 @@ def process_keywords(df_kw):
 
             for i in range(1, 4):
                 if len(filtered) >= i:
-                    row[f"rank_{i}_name"] = filtered[i-1].get("title", "")
-                    row[f"rank_{i}_url"] = filtered[i-1].get("link", "")
+                    row[f"rank_{i}_name"] = filtered[i - 1].get("title", "")
+                    row[f"rank_{i}_url"] = filtered[i - 1].get("link", "")
                 else:
                     row[f"rank_{i}_name"] = ""
                     row[f"rank_{i}_url"] = ""
@@ -85,36 +92,50 @@ def process_keywords(df_kw):
                 row[f"{name}_rank"] = rnk
                 row[f"{name}_url"] = url
 
+            # PAA logic
+            paa_results = data.get("related_questions", [])
+            row["paa_exists"] = "Yes" if paa_results else "No"
+            row["paa_kollegeapply"] = "No"
+            for item in paa_results:
+                source = item.get("source", {})
+                if source and domain_in_url(source.get("link", ""), TARGET_DOMAIN):
+                    row["paa_kollegeapply"] = "Yes"
+                    break
+
             results.append(row)
 
         except requests.exceptions.RequestException as e:
             st.error(f"❌ Error processing keyword '{kw}': {e}")
-        
-        time.sleep(2)  # Delay to avoid hitting SerpAPI rate limits
+        time.sleep(2)
 
     return pd.DataFrame(results)
 
-# --- Streamlit App ---
-st.title("📈 Google Keyword Rank Checker")
 
-uploaded_file = st.file_uploader("Upload Keyword Excel File", type=["xlsx"])
+# --- Streamlit UI ---
+st.set_page_config(page_title="Keyword Rank Checker", layout="wide")
+st.title("🔍 Keyword SERP Rank Checker with PAA Detection")
 
-if uploaded_file is not None:
+uploaded_file = st.file_uploader("📤 Upload Excel file with 'KW' column", type=["xlsx"])
+
+if uploaded_file:
     try:
         df_kw = pd.read_excel(uploaded_file, usecols=["KW"])
-        st.success("✅ File uploaded. Starting processing...")
+        st.success("✅ File uploaded successfully. Starting analysis...")
 
-        with st.spinner("🔄 Fetching data from Google..."):
+        with st.spinner("Fetching SERP data from Google via SerpAPI..."):
             df_results = process_keywords(df_kw)
 
-        st.subheader("🔍 Preview of Results")
+        st.subheader("📊 SERP Result Preview")
         st.dataframe(df_results.head(10))
 
         # Download
         towrite = BytesIO()
         df_results.to_excel(towrite, index=False, engine='openpyxl')
         towrite.seek(0)
-        st.download_button("📥 Download Excel", towrite, "keyword_ranks.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+        filename = f"keyword_rank_output_{timestamp}.xlsx"
+        st.download_button("📥 Download Excel File", towrite, filename, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
     except Exception as e:
-        st.error(f"⚠️ Error reading file: {e}")
+        st.error(f"⚠️ Failed to read file: {e}")
