@@ -8,7 +8,7 @@ from io import BytesIO
 from datetime import datetime
 
 # Configuration
-API_KEY = "a1cb48f13653b98e12a6a74d391bf5f6c41231e4dff199a6d3abdc4f2f40314b"
+API_KEY = "8ae51a89b5c6bacd1e3b1783c1f7cacae0eed213d80afebf43a11018d27ee885"
 TARGET_DOMAIN = "kollegeapply.com"
 
 COMPETITORS = {
