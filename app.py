@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 from io import BytesIO
 from datetime import datetime
 
-# Configuration
+# --- CONFIGURATION ---
 API_KEY = "8ae51a89b5c6bacd1e3b1783c1f7cacae0eed213d80afebf43a11018d27ee885"
 TARGET_DOMAIN = "kollegeapply.com"
 
@@ -26,7 +26,8 @@ AMBIGUOUS_QUERIES = {
     "gre": "GRE exam"
 }
 
-# Helper Functions
+
+# --- HELPER FUNCTIONS ---
 def is_official_site(url):
     return any(p in url.lower() for p in OFFICIAL_PATTERNS)
 
@@ -50,8 +51,10 @@ def get_ranking(organic_results, target_domain):
             return idx, link
     return "Not in Top 100", ""
 
+
 def process_keywords(df_kw):
     results = []
+
     for kw in df_kw["KW"]:
         query = AMBIGUOUS_QUERIES.get(kw.strip().lower(), kw)
         params = {
@@ -91,22 +94,29 @@ def process_keywords(df_kw):
                 row[f"{name}_rank"] = rnk
                 row[f"{name}_url"] = url
 
-            # Accurate PAA detection
+            # --- Featured Snippet + PAA Detection ---
             row["paa_exists"] = "No"
             row["paa_kollegeapply"] = "No"
 
-            paa_results = data.get("related_questions", [])
-            if paa_results:
+            # 1. Featured Snippet / Answer Box
+            featured = data.get("answer_box", {}) or data.get("featured_snippet", {})
+            fs_link = featured.get("link", "")
+            if fs_link and domain_in_url(fs_link, TARGET_DOMAIN):
                 row["paa_exists"] = "Yes"
-                for item in paa_results:
-                    link = ""
-                    if "source" in item and "link" in item["source"]:
-                        link = item["source"]["link"]
-                    elif "answer" in item and "source" in item["answer"] and "link" in item["answer"]["source"]:
-                        link = item["answer"]["source"]["link"]
-                    
-                    if link:
-                        if domain_in_url(link, TARGET_DOMAIN):
+                row["paa_kollegeapply"] = "Yes"
+
+            # 2. PAA sources
+            if row["paa_kollegeapply"] == "No":
+                paa_results = data.get("related_questions", [])
+                if paa_results:
+                    row["paa_exists"] = "Yes"
+                    for item in paa_results:
+                        link = ""
+                        if "source" in item and "link" in item["source"]:
+                            link = item["source"]["link"]
+                        elif "answer" in item and "source" in item["answer"] and "link" in item["answer"]["source"]:
+                            link = item["answer"]["source"]["link"]
+                        if link and domain_in_url(link, TARGET_DOMAIN):
                             row["paa_kollegeapply"] = "Yes"
                             break
 
@@ -115,25 +125,26 @@ def process_keywords(df_kw):
         except Exception as e:
             st.error(f"❌ Error processing keyword '{kw}': {e}")
 
-        time.sleep(2)
+        time.sleep(2)  # Respect SerpAPI rate limits
 
     return pd.DataFrame(results)
 
-# --- Streamlit UI ---
-st.set_page_config(page_title="Keyword Rank Checker", layout="wide")
-st.title("🔍 Keyword SERP Rank Checker with PAA Detection")
 
-uploaded_file = st.file_uploader("📤 Upload Excel file with 'KW' column", type=["xlsx"])
+# --- STREAMLIT UI ---
+st.set_page_config(page_title="Keyword Rank + PAA Checker", layout="wide")
+st.title("🔍 Keyword SERP Rank Checker + PAA/Featured Snippet Detection")
+
+uploaded_file = st.file_uploader("📤 Upload Excel file with a 'KW' column", type=["xlsx"])
 
 if uploaded_file:
     try:
         df_kw = pd.read_excel(uploaded_file, usecols=["KW"])
-        st.success("✅ File uploaded successfully. Starting analysis...")
+        st.success("✅ File uploaded. Processing...")
 
-        with st.spinner("Fetching SERP data from Google via SerpAPI..."):
+        with st.spinner("🔄 Querying Google SERPs via SerpAPI..."):
             df_results = process_keywords(df_kw)
 
-        st.subheader("📊 SERP Result Preview")
+        st.subheader("📊 Result Preview")
         st.dataframe(df_results.head(10))
 
         # Download
@@ -143,7 +154,7 @@ if uploaded_file:
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M")
         filename = f"keyword_rank_output_{timestamp}.xlsx"
-        st.download_button("📥 Download Excel File", towrite, filename, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        st.download_button("📥 Download Excel", towrite, filename, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
     except Exception as e:
-        st.error(f"⚠️ Failed to read file: {e}")
+        st.error(f"⚠️ Failed to process file: {e}")
