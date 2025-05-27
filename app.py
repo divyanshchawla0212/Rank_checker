@@ -1,4 +1,3 @@
-# app.py
 import streamlit as st
 import pandas as pd
 import requests
@@ -39,7 +38,7 @@ def extract_domain(url):
 
 def domain_in_url(url, domain):
     try:
-        return domain in urlparse(url).netloc.lower()
+        return domain in extract_domain(url)
     except:
         return False
 
@@ -92,24 +91,29 @@ def process_keywords(df_kw):
                 row[f"{name}_rank"] = rnk
                 row[f"{name}_url"] = url
 
-            # PAA logic
-            paa_results = data.get("related_questions", [])
-            row["paa_exists"] = "Yes" if paa_results else "No"
+            # PAA detection
+            row["paa_exists"] = "No"
             row["paa_kollegeapply"] = "No"
-            for item in paa_results:
-                source = item.get("source", {})
-                if source and domain_in_url(source.get("link", ""), TARGET_DOMAIN):
-                    row["paa_kollegeapply"] = "Yes"
-                    break
+
+            paa_results = data.get("related_questions", [])
+            if paa_results:
+                row["paa_exists"] = "Yes"
+                for item in paa_results:
+                    source = item.get("source", {})
+                    if source:
+                        source_link = source.get("link", "")
+                        if domain_in_url(source_link, TARGET_DOMAIN):
+                            row["paa_kollegeapply"] = "Yes"
+                            break
 
             results.append(row)
 
-        except requests.exceptions.RequestException as e:
+        except Exception as e:
             st.error(f"❌ Error processing keyword '{kw}': {e}")
+
         time.sleep(2)
 
     return pd.DataFrame(results)
-
 
 # --- Streamlit UI ---
 st.set_page_config(page_title="Keyword Rank Checker", layout="wide")
