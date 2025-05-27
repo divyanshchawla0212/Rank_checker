@@ -91,7 +91,7 @@ def process_keywords(df_kw):
                 row[f"{name}_rank"] = rnk
                 row[f"{name}_url"] = url
 
-            # PAA detection
+            # Accurate PAA detection
             row["paa_exists"] = "No"
             row["paa_kollegeapply"] = "No"
 
@@ -99,10 +99,14 @@ def process_keywords(df_kw):
             if paa_results:
                 row["paa_exists"] = "Yes"
                 for item in paa_results:
-                    source = item.get("source", {})
-                    if source:
-                        source_link = source.get("link", "")
-                        if domain_in_url(source_link, TARGET_DOMAIN):
+                    link = ""
+                    if "source" in item and "link" in item["source"]:
+                        link = item["source"]["link"]
+                    elif "answer" in item and "source" in item["answer"] and "link" in item["answer"]["source"]:
+                        link = item["answer"]["source"]["link"]
+                    
+                    if link:
+                        if domain_in_url(link, TARGET_DOMAIN):
                             row["paa_kollegeapply"] = "Yes"
                             break
 
