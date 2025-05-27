@@ -26,7 +26,6 @@ AMBIGUOUS_QUERIES = {
     "gre": "GRE exam"
 }
 
-
 # --- HELPER FUNCTIONS ---
 def is_official_site(url):
     return any(p in url.lower() for p in OFFICIAL_PATTERNS)
@@ -51,7 +50,7 @@ def get_ranking(organic_results, target_domain):
             return idx, link
     return "Not in Top 100", ""
 
-
+# --- MAIN PROCESSING FUNCTION ---
 def process_keywords(df_kw):
     results = []
 
@@ -97,38 +96,44 @@ def process_keywords(df_kw):
             # --- Featured Snippet + PAA Detection ---
             row["paa_exists"] = "No"
             row["paa_kollegeapply"] = "No"
+            checked_links = []
 
-            # 1. Featured Snippet / Answer Box
+            # 1. Featured snippet / answer box
             featured = data.get("answer_box", {}) or data.get("featured_snippet", {})
             fs_link = featured.get("link", "")
-            if fs_link and domain_in_url(fs_link, TARGET_DOMAIN):
-                row["paa_exists"] = "Yes"
-                row["paa_kollegeapply"] = "Yes"
-
-            # 2. PAA sources
-            if row["paa_kollegeapply"] == "No":
-                paa_results = data.get("related_questions", [])
-                if paa_results:
+            if fs_link:
+                checked_links.append(fs_link)
+                if domain_in_url(fs_link, TARGET_DOMAIN):
                     row["paa_exists"] = "Yes"
-                    for item in paa_results:
-                        link = ""
-                        if "source" in item and "link" in item["source"]:
-                            link = item["source"]["link"]
-                        elif "answer" in item and "source" in item["answer"] and "link" in item["answer"]["source"]:
-                            link = item["answer"]["source"]["link"]
-                        if link and domain_in_url(link, TARGET_DOMAIN):
+                    row["paa_kollegeapply"] = "Yes"
+
+            # 2. PAA (People Also Ask)
+            paa_results = data.get("related_questions", [])
+            if paa_results:
+                row["paa_exists"] = "Yes"
+                for item in paa_results:
+                    link = ""
+                    if "source" in item and "link" in item["source"]:
+                        link = item["source"]["link"]
+                    elif "answer" in item and "source" in item["answer"] and "link" in item["answer"]["source"]:
+                        link = item["answer"]["source"]["link"]
+                    if link:
+                        checked_links.append(link)
+                        if domain_in_url(link, TARGET_DOMAIN):
                             row["paa_kollegeapply"] = "Yes"
                             break
+
+            # 3. Add debug info of all links checked
+            row["paa_links_checked"] = "; ".join(checked_links)
 
             results.append(row)
 
         except Exception as e:
             st.error(f"❌ Error processing keyword '{kw}': {e}")
 
-        time.sleep(2)  # Respect SerpAPI rate limits
+        time.sleep(2)
 
     return pd.DataFrame(results)
-
 
 # --- STREAMLIT UI ---
 st.set_page_config(page_title="Keyword Rank + PAA Checker", layout="wide")
