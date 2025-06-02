@@ -10,7 +10,7 @@ from openpyxl.styles import PatternFill
 from openpyxl.utils.dataframe import dataframe_to_rows
 
 # --- CONFIGURATION ---
-API_KEY = "85f8600265c9ad3cd664c1e629db43670a47d04587403d0a775c53f0ec6b66ab"
+API_KEY = "6deab6fa95f607482fd4c2fcadda451b3b479048558fdaa76cb62e2f132349c6"
 TARGET_DOMAIN = "kollegeapply.com"
 
 COMPETITORS = {
