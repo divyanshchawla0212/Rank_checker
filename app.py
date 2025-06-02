@@ -138,6 +138,8 @@ def compare_ranks(row):
             return "blue"
         elif cur > prev:
             return "red"
+        else:
+            return ""
     except:
         return ""
 
@@ -146,7 +148,12 @@ def rank_diff(row):
         cur = int(row["kollegeapply_rank"])
         prev = int(row["kollegeapply_rank_last"])
         diff = prev - cur
-        return f"{'+' if diff > 0 else ''}{diff}"
+        if diff > 0:
+            return f"+{diff}"
+        elif diff < 0:
+            return f"{diff}"
+        else:
+            return "0"
     except:
         return "N/A"
 
@@ -172,16 +179,17 @@ if uploaded_kw and uploaded_old:
             suffixes=("", "_last")
         )
 
-        df_merged["rank_change_color"] = df_merged.apply(compare_ranks, axis=1)
         df_merged["rank_change_diff"] = df_merged.apply(rank_diff, axis=1)
+        df_merged["rank_change_color"] = df_merged.apply(compare_ranks, axis=1)
 
-        # Reorder columns
+        # Reorder columns: rank_change_diff immediately after kollegeapply_rank
         cols = df_merged.columns.tolist()
         if "kollegeapply_rank" in cols:
             idx = cols.index("kollegeapply_rank")
             reordered = (
                 cols[:idx + 1]
-                + ["kollegeapply_rank_last", "rank_change_diff", "rank_change_color"]
+                + ["rank_change_diff"]
+                + ["kollegeapply_rank_last", "rank_change_color"]
                 + [col for col in cols if col not in ("kollegeapply_rank_last", "rank_change_diff", "rank_change_color") and col not in cols[:idx + 1]]
             )
             df_merged = df_merged[reordered]
