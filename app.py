@@ -3,11 +3,14 @@ import pandas as pd
 import requests
 import time
 from urllib.parse import urlparse
-from io import BytesIO
 from datetime import datetime
+from io import BytesIO
+from openpyxl import Workbook
+from openpyxl.styles import PatternFill
+from openpyxl.utils.dataframe import dataframe_to_rows
 
 # --- CONFIGURATION ---
-API_KEY = "8ae51a89b5c6bacd1e3b1783c1f7cacae0eed213d80afebf43a11018d27ee885"
+API_KEY = "85f8600265c9ad3cd664c1e629db43670a47d04587403d0a775c53f0ec6b66ab"
 TARGET_DOMAIN = "kollegeapply.com"
 
 COMPETITORS = {
@@ -50,10 +53,8 @@ def get_ranking(organic_results, target_domain):
             return idx, link
     return "Not in Top 100", ""
 
-# --- MAIN PROCESSING FUNCTION ---
 def process_keywords(df_kw):
     results = []
-
     for kw in df_kw["KW"]:
         query = AMBIGUOUS_QUERIES.get(kw.strip().lower(), kw)
         params = {
@@ -73,13 +74,12 @@ def process_keywords(df_kw):
             data = resp.json()
 
             organic = data.get("organic_results", [])
-            filtered = [r for r in organic if not is_official_site(r.get("link", ""))]
-
             row = {"keyword": kw}
-            kr, ku = get_ranking(filtered, TARGET_DOMAIN)
+            kr, ku = get_ranking(organic, TARGET_DOMAIN)
             row["kollegeapply_rank"] = kr
             row["kollegeapply_url"] = ku
 
+            filtered = [r for r in organic if not is_official_site(r.get("link", ""))]
             for i in range(1, 4):
                 if len(filtered) >= i:
                     row[f"rank_{i}_name"] = filtered[i - 1].get("title", "")
@@ -89,16 +89,14 @@ def process_keywords(df_kw):
                     row[f"rank_{i}_url"] = ""
 
             for name, dom in COMPETITORS.items():
-                rnk, url = get_ranking(filtered, dom)
+                rnk, url = get_ranking(organic, dom)
                 row[f"{name}_rank"] = rnk
                 row[f"{name}_url"] = url
 
-            # --- Featured Snippet + PAA Detection ---
             row["paa_exists"] = "No"
             row["paa_kollegeapply"] = "No"
             checked_links = []
 
-            # 1. Featured snippet / answer box
             featured = data.get("answer_box", {}) or data.get("featured_snippet", {})
             fs_link = featured.get("link", "")
             if fs_link:
@@ -107,7 +105,6 @@ def process_keywords(df_kw):
                     row["paa_exists"] = "Yes"
                     row["paa_kollegeapply"] = "Yes"
 
-            # 2. PAA (People Also Ask)
             paa_results = data.get("related_questions", [])
             if paa_results:
                 row["paa_exists"] = "Yes"
@@ -123,43 +120,86 @@ def process_keywords(df_kw):
                             row["paa_kollegeapply"] = "Yes"
                             break
 
-            # 3. Add debug info of all links checked
             row["paa_links_checked"] = "; ".join(checked_links)
-
             results.append(row)
 
         except Exception as e:
-            st.error(f"❌ Error processing keyword '{kw}': {e}")
+            st.warning(f"❌ Error processing keyword '{kw}': {e}")
 
         time.sleep(2)
 
     return pd.DataFrame(results)
 
-# --- STREAMLIT UI ---
-st.set_page_config(page_title="Keyword Rank + PAA Checker", layout="wide")
-st.title("🔍 Keyword SERP Rank Checker + PAA/Featured Snippet Detection")
-
-uploaded_file = st.file_uploader("📤 Upload Excel file with a 'KW' column", type=["xlsx"])
-
-if uploaded_file:
+def compare_ranks(row):
     try:
-        df_kw = pd.read_excel(uploaded_file, usecols=["KW"])
-        st.success("✅ File uploaded. Processing...")
+        cur = int(row["kollegeapply_rank"])
+        prev = int(row["kollegeapply_rank_last"])
+        if cur < prev:
+            return "blue"
+        elif cur > prev:
+            return "red"
+    except:
+        return ""
 
-        with st.spinner("🔄 Querying Google SERPs via SerpAPI..."):
-            df_results = process_keywords(df_kw)
+# --- STREAMLIT UI ---
+st.set_page_config(page_title="KollegeApply Rank Checker", layout="wide")
+st.title("🔍 KollegeApply Keyword Rank Tracker")
+st.markdown("Upload current keyword list and last week's report to compare rankings and highlight changes.")
 
-        st.subheader("📊 Result Preview")
-        st.dataframe(df_results.head(10))
+uploaded_kw = st.file_uploader("Upload Current Keyword Excel", type=["xlsx"])
+uploaded_old = st.file_uploader("Upload Previous Report Excel", type=["xlsx"])
 
-        # Download
-        towrite = BytesIO()
-        df_results.to_excel(towrite, index=False, engine='openpyxl')
-        towrite.seek(0)
+if uploaded_kw and uploaded_old:
+    df_kw = pd.read_excel(uploaded_kw, usecols=["KW"])
+    df_previous = pd.read_excel(uploaded_old)
 
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M")
-        filename = f"keyword_rank_output_{timestamp}.xlsx"
-        st.download_button("📥 Download Excel", towrite, filename, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    with st.spinner("🔄 Processing keywords using SerpAPI..."):
+        df_current = process_keywords(df_kw)
 
-    except Exception as e:
-        st.error(f"⚠️ Failed to process file: {e}")
+        df_merged = df_current.merge(
+            df_previous[["keyword", "kollegeapply_rank"]],
+            on="keyword",
+            how="left",
+            suffixes=("", "_last")
+        )
+
+        df_merged["rank_change_color"] = df_merged.apply(compare_ranks, axis=1)
+
+        # Reorder columns
+        cols = df_merged.columns.tolist()
+        if "kollegeapply_rank" in cols:
+            idx = cols.index("kollegeapply_rank")
+            reordered = (
+                cols[:idx + 1]
+                + ["kollegeapply_rank_last", "rank_change_color"]
+                + [col for col in cols if col not in ("kollegeapply_rank_last", "rank_change_color") and col not in cols[:idx + 1]]
+            )
+            df_merged = df_merged[reordered]
+
+        st.success("✅ Completed. Previewing first 10 rows:")
+        st.dataframe(df_merged.head(10))
+
+        # Export to Excel
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Rank Comparison"
+        for r in dataframe_to_rows(df_merged, index=False, header=True):
+            ws.append(r)
+
+        rank_col_index = list(df_merged.columns).index("kollegeapply_rank") + 1
+        color_map = {
+            "red": PatternFill(start_color="FF9999", end_color="FF9999", fill_type="solid"),
+            "blue": PatternFill(start_color="ADD8E6", end_color="ADD8E6", fill_type="solid")
+        }
+
+        for i, row in enumerate(df_merged.itertuples(), start=2):
+            color = getattr(row, "rank_change_color")
+            if color in color_map:
+                ws.cell(row=i, column=rank_col_index).fill = color_map[color]
+
+        # Download link
+        output = BytesIO()
+        wb.save(output)
+        output.seek(0)
+        file_name = f"rank_comparison_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+        st.download_button("📥 Download Excel", data=output, file_name=file_name, mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
