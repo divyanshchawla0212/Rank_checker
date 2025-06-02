@@ -41,7 +41,7 @@ def extract_domain(url):
 
 def domain_in_url(url, domain):
     try:
-        return domain in extract_domain(url)
+        return extract_domain(url) == domain
     except:
         return False
 
@@ -49,7 +49,7 @@ def get_ranking(organic_results, target_domain):
     for idx, r in enumerate(organic_results, start=1):
         link = r.get("link", "")
         domain = extract_domain(link)
-        if target_domain in domain:
+        if domain == target_domain:
             return idx, link
     return "Not in Top 100", ""
 
@@ -197,7 +197,6 @@ if uploaded_kw and uploaded_old:
             if color in color_map:
                 ws.cell(row=i, column=rank_col_index).fill = color_map[color]
 
-        # Download link
         output = BytesIO()
         wb.save(output)
         output.seek(0)
