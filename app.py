@@ -141,10 +141,19 @@ def compare_ranks(row):
     except:
         return ""
 
+def rank_diff(row):
+    try:
+        cur = int(row["kollegeapply_rank"])
+        prev = int(row["kollegeapply_rank_last"])
+        diff = prev - cur
+        return f"{'+' if diff > 0 else ''}{diff}"
+    except:
+        return "N/A"
+
 # --- STREAMLIT UI ---
 st.set_page_config(page_title="KollegeApply Rank Checker", layout="wide")
 st.title("🔍 KollegeApply Keyword Rank Tracker")
-st.markdown("Upload current keyword list and last week's report to compare rankings and highlight changes.")
+st.markdown("Upload current keyword list and last week's report to compare rankings, highlight changes, and view rank difference.")
 
 uploaded_kw = st.file_uploader("Upload Current Keyword Excel", type=["xlsx"])
 uploaded_old = st.file_uploader("Upload Previous Report Excel", type=["xlsx"])
@@ -164,6 +173,7 @@ if uploaded_kw and uploaded_old:
         )
 
         df_merged["rank_change_color"] = df_merged.apply(compare_ranks, axis=1)
+        df_merged["rank_change_diff"] = df_merged.apply(rank_diff, axis=1)
 
         # Reorder columns
         cols = df_merged.columns.tolist()
@@ -171,8 +181,8 @@ if uploaded_kw and uploaded_old:
             idx = cols.index("kollegeapply_rank")
             reordered = (
                 cols[:idx + 1]
-                + ["kollegeapply_rank_last", "rank_change_color"]
-                + [col for col in cols if col not in ("kollegeapply_rank_last", "rank_change_color") and col not in cols[:idx + 1]]
+                + ["kollegeapply_rank_last", "rank_change_diff", "rank_change_color"]
+                + [col for col in cols if col not in ("kollegeapply_rank_last", "rank_change_diff", "rank_change_color") and col not in cols[:idx + 1]]
             )
             df_merged = df_merged[reordered]
 
